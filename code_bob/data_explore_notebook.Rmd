@@ -3,6 +3,10 @@ title: "Data Explore"
 output:
   html_document:
     code_folding: hide
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
 ---
 
 ```{r setup}
@@ -27,7 +31,7 @@ df0 <- read_csv("../data/train.csv")
 glimpse(df0)
 ```
 
-## Proportion of Missing values
+## Proportion of missing values
 
 ```{r}
 round(map_dbl(df0, ~sum(is.na(.x))) %>% sort(decreasing = TRUE) / nrow(df0), 3)
