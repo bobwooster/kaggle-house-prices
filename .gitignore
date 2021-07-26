@@ -1,0 +1,17 @@
+# General
+.DS_Store
+.gitattributes
+*.html
+
+# R
+.RHistory
+*.Rproj
+.Rproj.user
+
+# Python
+venv
+.ipynb*
+
+# Data
+data
+*.csv
