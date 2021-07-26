@@ -1,0 +1,91 @@
+---
+title: "Data Explore"
+output:
+  html_document:
+    code_folding: hide
+---
+
+```{r setup}
+knitr::opts_chunk$set(message = FALSE,
+                      warning = FALSE)
+```
+
+```{r}
+# load packages
+library(tidyverse)
+library(lubridate)
+```
+
+```{r}
+# load data
+df0 <- read_csv("../data/train.csv")
+```
+
+# Explore the data
+
+```{r}
+glimpse(df0)
+```
+
+## Proportion of Missing values
+
+```{r}
+round(map_dbl(df0, ~sum(is.na(.x))) %>% sort(decreasing = TRUE) / nrow(df0), 3)
+```
+
+## Proportion of distinct values
+
+```{r}
+round(map_dbl(df0, ~n_distinct(.x)) %>% sort(decreasing = TRUE) / nrow(df0), 3)
+```
+
+## Feature plots
+
+```{r}
+# plot feature
+plot_feature <- function(col_name, df) {
+  # store the column values
+  x <- df %>% pull(!!sym(col_name))
+  
+  # compute the column type and number of values
+  feat_type <- class(x)
+  n_vals <- n_distinct(x)
+  
+  # create a plot based on the col type and number of distinct values
+  if(feat_type == "numeric" & n_vals > 10) {
+    g <- df %>%
+      ggplot(
+        aes(
+          x = !!sym(col_name)
+        )
+      ) +
+      geom_histogram(col = "black", fill = "red")
+    
+    # put the plot on a log scale if values positive and values cover two or more orders of mag
+    if(min(x, na.rm = TRUE) > 0 & max(x, na.rm = TRUE) / min(x, na.rm = TRUE) > 1e2) {
+      g <- g + scale_x_log10()
+    }
+  } else if(n_vals <= 10) {
+    g <- df %>%
+      ggplot(
+        aes(
+          x = factor(!!sym(col_name))
+        )
+      ) +
+      geom_bar(col = "black", fill = "darkgreen") +
+      labs(x = col_name)
+  } else {
+    g <- NULL
+  }
+  # output the plot
+  g
+}
+```
+
+```{r}
+map(names(df0), ~plot_feature(.x, df0))
+```
+
+
+
+

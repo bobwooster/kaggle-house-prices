@@ -1,0 +1,121 @@
+---
+title: "House prices data explore"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+```
+
+```{r}
+# load data
+df0 <- read_csv("../data/train.csv")
+```
+
+Input {.sidebar}
+-----------------------------------------------------------------------
+
+### Inputs
+
+```{r}
+selectInput(
+  inputId = "feat",
+  label = "Choose column",
+  choices = names(df0)
+)
+```
+
+Row {data-height=75}
+-----------------------------------------------------------------------
+
+### Distinct values
+
+```{r}
+renderPrint({
+  df0 %>% pull(!!sym(input$feat)) %>% n_distinct()
+})
+```
+
+### Missing values
+
+```{r}
+renderPrint({
+  sum(is.na(df0 %>% pull(!!sym(input$feat))))
+})
+```
+
+Row {data-hieght=600}
+-----------------------------------------------------------------------
+
+### Feature plot
+
+```{r}
+renderPlot({
+  # store the column values
+  x <- df0 %>% pull(!!sym(input$feat))
+  
+  # compute the column type and number of values
+  feat_type <- class(x)
+  n_vals <- n_distinct(x)
+  
+  # create a plot based on the col type and number of distinct values
+  if(feat_type == "numeric" & n_vals > 10) {
+    g <- df0 %>%
+      ggplot(
+        aes(
+          x = !!sym(input$feat)
+        )
+      ) +
+      geom_histogram(col = "black", fill = "red")
+    
+    # put the plot on a log scale if values positive and values cover two or more orders of mag
+    if(min(x, na.rm = TRUE) > 0 & max(x, na.rm = TRUE) / min(x, na.rm = TRUE) > 1e2) {
+      g <- g + scale_x_log10()
+    }
+  } else if(n_vals <= 10) {
+    g <- df0 %>%
+      ggplot(
+        aes(
+          x = factor(!!sym(input$feat))
+        )
+      ) +
+      geom_bar(col = "black", fill = "darkgreen") +
+      labs(x = input$feat)
+  } else {
+    g <- NULL
+  }
+  # output the plot
+  g
+})
+```
+
+### Data summary
+
+```{r}
+renderTable({
+  # store the column values
+  x <- df0 %>% pull(!!sym(input$feat)) %>% na.omit()
+  
+  # compute the column type and number of values
+  feat_type <- class(x)
+  n_vals <- n_distinct(x)
+  
+  if (feat_type == "numeric") {
+    feat_tbl <- tibble(
+      stat = c("# vals", "mean", "sd", "min", "25%", "median", "75%", "max"),
+      value = c(length(x), mean(x), sd(x), min(x), quantile(x, probs = 0.25),
+                median(x), quantile(x, probs = 0.75), max(x))
+    )
+  } else {
+    feat_tbl <- df0 %>%
+      count(!!sym(input$feat))
+  }
+  feat_tbl
+})
+```
+
