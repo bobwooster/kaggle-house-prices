@@ -10,12 +10,18 @@ runtime: shiny
 ```{r setup, include=FALSE}
 library(flexdashboard)
 library(tidyverse)
+library(ggmap)
+library(leaflet)
+library(DT)
 ```
 
 ```{r}
 # load data
 df0 <- read_csv("../data/train.csv")
 ```
+
+Feature explorer
+=======================================================================
 
 Input {.sidebar}
 -----------------------------------------------------------------------
@@ -37,7 +43,7 @@ Row {data-height=75}
 
 ```{r}
 renderPrint({
-  df0 %>% pull(!!sym(input$feat)) %>% n_distinct()
+  df0 %>% pull(input$feat) %>% n_distinct()
 })
 ```
 
@@ -45,7 +51,7 @@ renderPrint({
 
 ```{r}
 renderPrint({
-  sum(is.na(df0 %>% pull(!!sym(input$feat))))
+  sum(is.na(df0 %>% pull(input$feat)))
 })
 ```
 
@@ -56,38 +62,36 @@ Row {data-hieght=600}
 
 ```{r}
 renderPlot({
+  plot_df <- df0 %>% filter(!is.na(input$feat))
+  
   # store the column values
-  x <- df0 %>% pull(!!sym(input$feat))
+  x <- plot_df %>% pull(input$feat)
+  n_obs <- length(x)
   
   # compute the column type and number of values
   feat_type <- class(x)
   n_vals <- n_distinct(x)
   
   # create a plot based on the col type and number of distinct values
-  if(feat_type == "numeric" & n_vals > 10) {
-    g <- df0 %>%
-      ggplot(
-        aes(
-          x = !!sym(input$feat)
-        )
-      ) +
-      geom_histogram(col = "black", fill = "red")
-    
-    # put the plot on a log scale if values positive and values cover two or more orders of mag
-    if(min(x, na.rm = TRUE) > 0 & max(x, na.rm = TRUE) / min(x, na.rm = TRUE) > 1e2) {
-      g <- g + scale_x_log10()
+  if (feat_type == "numeric" & n_vals > 12) {
+    if (IQR(x) > 0) {
+      binwidth <- 2 * IQR(x) / (n_obs) ** (1 / 3) # Freedman-Diaconis rule
+    } else {
+      binwidth <- (max(x) - min(x)) / sqrt(n_obs)
     }
-  } else if(n_vals <= 10) {
-    g <- df0 %>%
-      ggplot(
-        aes(
-          x = factor(!!sym(input$feat))
-        )
-      ) +
-      geom_bar(col = "black", fill = "darkgreen") +
-      labs(x = input$feat)
+    
+    g <- plot_df %>%
+      ggplot(aes(x = !!sym(input$feat))) +
+      geom_histogram(col = "black",
+                     fill = "orange",
+                     binwidth = binwidth)
+    
   } else {
-    g <- NULL
+    g <- plot_df %>%
+      mutate(x_var = factor(!!sym(input$feat))) %>%
+      ggplot(aes(y = x_var)) +
+      geom_bar(col = "black", fill = "lightblue") +
+      labs(y = input$feat)
   }
   # output the plot
   g
@@ -99,7 +103,7 @@ renderPlot({
 ```{r}
 renderTable({
   # store the column values
-  x <- df0 %>% pull(!!sym(input$feat)) %>% na.omit()
+  x <- df0 %>% filter(!is.na(input$feat)) %>% pull(!!sym(input$feat))
   
   # compute the column type and number of values
   feat_type <- class(x)
@@ -116,6 +120,75 @@ renderTable({
       count(!!sym(input$feat))
   }
   feat_tbl
+})
+```
+
+Relationship with outcome
+=======================================================================
+
+Input {.sidebar}
+-----------------------------------------------------------------------
+
+### Inputs
+
+```{r}
+selectInput(
+  inputId = "feat2",
+  label = "Choose column",
+  choices = names(df0)
+)
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Plot
+
+```{r}
+renderPlot({
+  plot_df <- df0 %>%
+    filter(!is.na(input$feat2))
+  
+  feat_type <- plot_df %>% pull(input$feat2) %>% class()
+  
+  if(feat_type == "numeric") {
+    g <- plot_df %>%
+      ggplot(
+        aes(
+          x = !!sym(input$feat2),
+          y = SalePrice
+        )
+      ) +
+      geom_point() +
+      geom_smooth(se = FALSE)
+  } else {
+    g <- plot_df %>%
+      ggplot(
+        aes(
+          x = !!sym(input$feat2),
+          y = SalePrice
+        )
+      ) +
+      geom_boxplot()
+  }
+  
+  g
+})
+```
+
+Dataset
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Dataset
+
+```{r}
+renderDataTable({
+  df0 %>%
+    datatable(filter = 'top',
+              options = list(scrollY = '500px', scrollX = TRUE))
 })
 ```
 
