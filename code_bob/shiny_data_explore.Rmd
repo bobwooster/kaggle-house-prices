@@ -47,6 +47,11 @@ feature_type <- reactive({
   feature_vals() %>% class()
 })
 
+# number of distinct values
+n_vals <- reactive({
+  feature_plot_df() %>% pull(input$feature) %>% n_distinct()
+})
+
 # feature plot df
 feature_plot_df <- reactive({
   df <- df0 %>%
@@ -81,11 +86,8 @@ Row {data-height=600}
 
 ```{r}
 renderPlot({
-  # compute the number of distinct values
-  n_vals <- feature_plot_df() %>% pull(input$feature) %>% n_distinct()
-  
   # create a plot based on the col type and number of distinct values
-  if (feature_type() == "numeric" & n_vals > 10) {
+  if (feature_type() == "numeric" & n_vals() > 10) {
     g <- feature_plot_df() %>%
       ggplot(aes(x = !!sym(input$feature))) +
       geom_histogram(col = "black",
@@ -111,7 +113,7 @@ renderPlot({
   
   feature_type <- plot_df %>% pull(input$feature) %>% class()
   
-  if(feature_type() == "numeric") {
+  if(feature_type() == "numeric" & n_vals() > 10) {
     g <- feature_plot_df() %>%
       ggplot(
         aes(
