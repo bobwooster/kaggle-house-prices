@@ -179,16 +179,25 @@ Correlation between numeric variables
 Row
 -----------------------------------------------------------------------
 
-### Correlation plot
+### Correlation plot (sorted by correlation with SalePrice)
 
 ```{r}
 renderPlot({
+  # sort by correlation with SalePrice
+  cor_names <- map_dbl(df0 %>%
+                         select(where(is.numeric), -Id),
+                       ~cor(df0$SalePrice, .x, use = "pairwise.complete.obs")) %>%
+    abs() %>%
+    sort(decreasing = TRUE) %>% names()
+  
+  # compute pairwise correlations and cplot
   df0 %>%
     select(where(is.numeric), -Id) %>%
+    select(all_of(cor_names)) %>%
     cor(use = "pairwise.complete.obs") %>%
     corrplot(tl.col = 'black',
              method = "pie",
-             order = "alphabet",
+             order = "original",
              type = "upper")
 })
 ```
@@ -264,10 +273,8 @@ renderPlot({
       y = y,
       label = paste0(name, "\n", n_unique, " (", prop_unique, "%)")
     )) +
-    #geom_tile(aes(fill = prop_unique, alpha = prop_unique)) +
     geom_tile(aes(fill = class_type), alpha = 0.5) +
     geom_text(aes(col = n_unique > 10), size = 3) +
-    #scale_fill_gradient(low = "green", high = "red") +
     scale_fill_manual(values = c(factor = "lightblue", numeric = "orange")) +
     scale_color_manual(values = c("TRUE" = "blue", "FALSE" = "black")) +
     labs(fill = "Variable type") +
