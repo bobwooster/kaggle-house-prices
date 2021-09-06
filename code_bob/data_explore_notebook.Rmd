@@ -34,13 +34,71 @@ glimpse(df0)
 ## Proportion of missing values
 
 ```{r}
-round(map_dbl(df0, ~sum(is.na(.x))) %>% sort(decreasing = TRUE) / nrow(df0), 3)
+tibble(
+  x = rep(1:9, times = 9),
+  y = rep(9:1, each = 9),
+  name = sort(names(df0))
+) %>%
+  left_join(
+    map_df(df0, ~ sum(is.na(.x))) %>%
+      pivot_longer(
+        cols = everything(),
+        names_to = "name",
+        values_to = "n_missing"
+      ),
+    by = "name"
+  ) %>%
+  mutate(prop_na = 100* round(n_missing / nrow(df0), 3)) %>%
+  ggplot(
+    aes(
+      x = x,
+      y = y,
+      label = paste0(name, "\n", n_missing, " (", prop_na, "%)")
+    )
+  ) +
+  geom_tile(aes(fill = prop_na, alpha = prop_na)) +
+  geom_text(aes(col = prop_na > 0), size = 2.5) +
+  scale_fill_gradient(low = "green", high = "red") +
+  scale_color_manual(values = c("TRUE" = "blue", "FALSE" = "black")) +
+  labs(fill = "Proportion missing") +
+  guides(alpha = "none", color = FALSE) +
+  theme_void() +
+  theme(legend.position = "top")
 ```
 
 ## Proportion of distinct values
 
 ```{r}
-round(map_dbl(df0, ~n_distinct(.x)) %>% sort(decreasing = TRUE) / nrow(df0), 3)
+tibble(
+  x = rep(1:9, times = 9),
+  y = rep(9:1, each = 9),
+  name = sort(names(df0))
+) %>%
+  left_join(
+    map_df(df0, ~ n_distinct(.x)) %>%
+      pivot_longer(
+        cols = everything(),
+        names_to = "name",
+        values_to = "n_unique"
+      ),
+    by = "name"
+  ) %>%
+  mutate(prop_unique = 100* round(n_unique / nrow(df0), 3)) %>%
+  ggplot(
+    aes(
+      x = x,
+      y = y,
+      label = paste0(name, "\n", n_unique, " (", prop_unique, "%)")
+    )
+  ) +
+  geom_tile(aes(fill = prop_unique, alpha = prop_unique)) +
+  geom_text(aes(col = n_unique > 10), size = 2.5) +
+  scale_fill_gradient(low = "green", high = "red") +
+  scale_color_manual(values = c("TRUE" = "blue", "FALSE" = "black")) +
+  labs(fill = "Proportion of unique values") +
+  guides(alpha = "none", col = "none") +
+  theme_void() +
+  theme(legend.position = "top")
 ```
 
 ## Feature plots
@@ -63,7 +121,7 @@ plot_feature <- function(col_name, df) {
           x = !!sym(col_name)
         )
       ) +
-      geom_histogram(col = "black", fill = "red")
+      geom_histogram(col = "black", fill = "darkred")
     
     # put the plot on a log scale if values positive and values cover two or more orders of mag
     if(min(x, na.rm = TRUE) > 0 & max(x, na.rm = TRUE) / min(x, na.rm = TRUE) > 1e2) {

@@ -10,14 +10,14 @@ runtime: shiny
 ```{r setup, include=FALSE}
 library(flexdashboard)
 library(tidyverse)
-library(ggmap)
-library(leaflet)
+library(corrplot)
 library(DT)
 ```
 
 ```{r}
 # load data
-df0 <- read_csv("../data/train.csv")
+df0 <- read_csv("../data/train.csv") %>%
+  mutate(across(where(is.character), ~fct_infreq(.x)))
 ```
 
 Feature explorer
@@ -30,20 +30,39 @@ Input {.sidebar}
 
 ```{r}
 selectInput(
-  inputId = "feat",
+  inputId = "feature",
   label = "Choose column",
-  choices = names(df0)
+  choices = names(df0) %>% sort()
 )
 ```
 
-Row {data-height=75}
+```{r}
+# filter data
+feature_vals <- reactive({
+  df0 %>% pull(input$feature)
+})
+
+# feature type
+feature_type <- reactive({
+  feature_vals() %>% class()
+})
+
+# feature plot df
+feature_plot_df <- reactive({
+  df <- df0 %>%
+    select(input$feature, SalePrice) %>%
+    drop_na()
+})
+```
+
+Row {data-height=125}
 -----------------------------------------------------------------------
 
 ### Distinct values
 
 ```{r}
 renderPrint({
-  df0 %>% pull(input$feat) %>% n_distinct()
+  feature_vals() %>% n_distinct()
 })
 ```
 
@@ -51,128 +70,210 @@ renderPrint({
 
 ```{r}
 renderPrint({
-  sum(is.na(df0 %>% pull(input$feat)))
+  sum(is.na(feature_vals()))
 })
 ```
 
-Row {data-hieght=600}
+Row {data-height=600}
 -----------------------------------------------------------------------
 
 ### Feature plot
 
 ```{r}
 renderPlot({
-  plot_df <- df0 %>% filter(!is.na(input$feat))
-  
-  # store the column values
-  x <- plot_df %>% pull(input$feat)
-  n_obs <- length(x)
-  
-  # compute the column type and number of values
-  feat_type <- class(x)
-  n_vals <- n_distinct(x)
+  # compute the number of distinct values
+  n_vals <- feature_plot_df() %>% pull(input$feature) %>% n_distinct()
   
   # create a plot based on the col type and number of distinct values
-  if (feat_type == "numeric" & n_vals > 12) {
-    if (IQR(x) > 0) {
-      binwidth <- 2 * IQR(x) / (n_obs) ** (1 / 3) # Freedman-Diaconis rule
-    } else {
-      binwidth <- (max(x) - min(x)) / sqrt(n_obs)
-    }
-    
-    g <- plot_df %>%
-      ggplot(aes(x = !!sym(input$feat))) +
+  if (feature_type() == "numeric" & n_vals > 10) {
+    g <- feature_plot_df() %>%
+      ggplot(aes(x = !!sym(input$feature))) +
       geom_histogram(col = "black",
                      fill = "orange",
-                     binwidth = binwidth)
-    
+                     bins = 30)
   } else {
-    g <- plot_df %>%
-      mutate(x_var = factor(!!sym(input$feat))) %>%
-      ggplot(aes(y = x_var)) +
+    g <- feature_plot_df() %>%
+      ggplot(aes(y = !!sym(input$feature))) +
       geom_bar(col = "black", fill = "lightblue") +
-      labs(y = input$feat)
+      labs(y = input$feature)
   }
   # output the plot
   g
 })
 ```
 
-### Data summary
-
-```{r}
-renderTable({
-  # store the column values
-  x <- df0 %>% filter(!is.na(input$feat)) %>% pull(!!sym(input$feat))
-  
-  # compute the column type and number of values
-  feat_type <- class(x)
-  n_vals <- n_distinct(x)
-  
-  if (feat_type == "numeric") {
-    feat_tbl <- tibble(
-      stat = c("# vals", "mean", "sd", "min", "25%", "median", "75%", "max"),
-      value = c(length(x), mean(x), sd(x), min(x), quantile(x, probs = 0.25),
-                median(x), quantile(x, probs = 0.75), max(x))
-    )
-  } else {
-    feat_tbl <- df0 %>%
-      count(!!sym(input$feat))
-  }
-  feat_tbl
-})
-```
-
-Relationship with outcome
-=======================================================================
-
-Input {.sidebar}
------------------------------------------------------------------------
-
-### Inputs
-
-```{r}
-selectInput(
-  inputId = "feat2",
-  label = "Choose column",
-  choices = names(df0)
-)
-```
-
-Row
------------------------------------------------------------------------
-
-### Plot
+### Relationship with SalePrice
 
 ```{r}
 renderPlot({
   plot_df <- df0 %>%
-    filter(!is.na(input$feat2))
+    filter(!is.na(input$feature))
   
-  feat_type <- plot_df %>% pull(input$feat2) %>% class()
+  feature_type <- plot_df %>% pull(input$feature) %>% class()
   
-  if(feat_type == "numeric") {
-    g <- plot_df %>%
+  if(feature_type() == "numeric") {
+    g <- feature_plot_df() %>%
       ggplot(
         aes(
-          x = !!sym(input$feat2),
+          x = !!sym(input$feature),
           y = SalePrice
         )
       ) +
       geom_point() +
       geom_smooth(se = FALSE)
   } else {
-    g <- plot_df %>%
+    g <- feature_plot_df() %>%
       ggplot(
         aes(
-          x = !!sym(input$feat2),
-          y = SalePrice
+          x = SalePrice,
+          y = reorder(!!sym(input$feature), SalePrice)
         )
       ) +
-      geom_boxplot()
+      geom_boxplot() +
+      labs(y = input$feature)
   }
   
   g
+})
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Data summary
+
+```{r}
+renderTable({
+  # store the column values
+  x <- feature_vals() %>% na.omit()
+  
+  if (feature_type() == "numeric") {
+    feature_tbl <- tibble(
+      stat = c("# vals", "mean", "sd", "min", "25%", "median", "75%", "max"),
+      value = c(round(length(x)), mean(x), sd(x), min(x), quantile(x, probs = 0.25),
+                median(x), quantile(x, probs = 0.75), max(x))
+    )
+  } else {
+    feature_tbl <- df0 %>%
+      count(!!sym(input$feature))
+  }
+  feature_tbl
+})
+```
+
+### Correlation with SalePrice
+
+```{r}
+renderPrint({
+  if(feature_type() == "numeric"){
+    cor(feature_plot_df()[1], feature_plot_df()[2])
+  } else {
+    print("Selected input column is not numeric")
+  }
+})
+```
+
+Correlation between numeric variables
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Correlation plot
+
+```{r}
+renderPlot({
+  df0 %>%
+    select(where(is.numeric), -Id) %>%
+    cor(use = "pairwise.complete.obs") %>%
+    corrplot(tl.col = 'black',
+             method = "pie",
+             order = "alphabet",
+             type = "upper")
+})
+```
+
+Missing and unique values
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Missing values
+
+```{r}
+renderPlot({
+  tibble(
+  x = rep(1:9, times = 9),
+  y = rep(9:1, each = 9),
+  name = sort(names(df0))
+) %>%
+  left_join(
+    map_df(df0, ~ sum(is.na(.x))) %>%
+      pivot_longer(
+        cols = everything(),
+        names_to = "name",
+        values_to = "n_missing"
+      ),
+    by = "name"
+  ) %>%
+  mutate(prop_na = 100* round(n_missing / nrow(df0), 3)) %>%
+  ggplot(
+    aes(
+      x = x,
+      y = y,
+      label = paste0(name, "\n", n_missing, " (", prop_na, "%)")
+    )
+  ) +
+  geom_tile(aes(fill = prop_na, alpha = prop_na)) +
+  geom_text(aes(col = prop_na > 0), size = 3) +
+  scale_fill_gradient(low = "green", high = "red") +
+  scale_color_manual(values = c("TRUE" = "blue", "FALSE" = "black")) +
+  labs(fill = "Percent missing") +
+  guides(alpha = "none", color = "none") +
+  theme_void() +
+  theme(legend.position = "top")
+})
+```
+
+### Unique values
+
+```{r}
+renderPlot({
+  tibble(
+    x = rep(1:9, times = 9),
+    y = rep(9:1, each = 9),
+    name = sort(names(df0))
+  ) %>%
+    left_join(
+      map_df(df0, ~ n_distinct(.x)) %>%
+        pivot_longer(
+          cols = everything(),
+          names_to = "name",
+          values_to = "n_unique"
+        ),
+      by = "name"
+    ) %>%
+    rowwise() %>%
+    mutate(
+      prop_unique = 100 * round(n_unique / nrow(df0), 3),
+      class_type = class(df0 %>% pull(name))
+    ) %>%
+    ggplot(aes(
+      x = x,
+      y = y,
+      label = paste0(name, "\n", n_unique, " (", prop_unique, "%)")
+    )) +
+    #geom_tile(aes(fill = prop_unique, alpha = prop_unique)) +
+    geom_tile(aes(fill = class_type), alpha = 0.5) +
+    geom_text(aes(col = n_unique > 10), size = 3) +
+    #scale_fill_gradient(low = "green", high = "red") +
+    scale_fill_manual(values = c(factor = "lightblue", numeric = "orange")) +
+    scale_color_manual(values = c("TRUE" = "blue", "FALSE" = "black")) +
+    labs(fill = "Variable type") +
+    guides(alpha = "none", col = "none") +
+    theme_void() +
+    theme(legend.position = "top")
 })
 ```
 
@@ -188,7 +289,8 @@ Row
 renderDataTable({
   df0 %>%
     datatable(filter = 'top',
-              options = list(scrollY = '500px', scrollX = TRUE))
+              options = list(pageLength = 12,
+                             scrollY = '500px',
+                             scrollX = TRUE))
 })
 ```
-
